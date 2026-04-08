@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>ActSapien</title>
+  <meta name="description" content="ActSapien — daily eco-habit tracker. Log your carbon impact, verify with fitness apps, and advocate for change."/>
+  <meta name="theme-color" content="#F5EDD9" media="(prefers-color-scheme: light)"/>
+  <meta name="theme-color" content="#111A15" media="(prefers-color-scheme: dark)"/>
+  <!-- Open Graph -->
+  <meta property="og:title" content="ActSapien"/>
+  <meta property="og:description" content="Track, verify and share your daily climate impact."/>
+  <meta property="og:type" content="website"/>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, #root {
+      height: 100%;
+      background: #F5EDD9;
+    }
+    @media (prefers-color-scheme: dark) {
+      html, body, #root { background: #111A15; }
+    }
+    #loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      font-family: sans-serif;
+      font-size: 14px;
+      color: #4A7C59;
+      letter-spacing: 1px;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"><div id="loading">Loading ActSapien…</div></div>
+
+  <!-- React -->
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <!-- Babel standalone for JSX transpilation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+
+  <script type="text/babel" data-type="module" src="./actsapien-app.jsx"></script>
+
+  <script>
+    // Mount after Babel transpiles
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        const loading = document.getElementById('loading');
+        if (loading) loading.style.display = 'none';
+      }, 500);
+    });
+  </script>
+</body>
+</html>
