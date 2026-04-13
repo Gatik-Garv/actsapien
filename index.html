@@ -1,0 +1,1529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>ActSapien</title>
+  <meta name="theme-color" content="#F5EDD9" media="(prefers-color-scheme: light)"/>
+  <meta name="theme-color" content="#111A15" media="(prefers-color-scheme: dark)"/>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html, body, #root { height:100%; }
+    body { background:#F5EDD9; }
+    @media (prefers-color-scheme: dark) {
+      body { background:#111A15; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+
+  <script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+
+// ─── THEME ────────────────────────────────────────────────────────────────────
+const LIGHT = {
+  shell:"#F5EDD9", card:"#FDFAF3", cardBorder:"#E2D4B4", cardAlt:"#EDE3CC",
+  text:"#1C2B24",  textSub:"#5A6E62", textMuted:"#8FA898",
+  primary:"#2A7FA5", primarySoft:"#D6EAF3",
+  green:"#4A7C59",   greenSoft:"#D4EAD9",
+  coral:"#C4623A",   coralSoft:"#F5DDD3",
+  purple:"#6B4FA0",  purpleSoft:"#EAE0F5",
+  nav:"#F0E6CF", navBorder:"#D9C99A",
+  verified:"#2A7FA5", verifiedBg:"#D6EAF3",
+  manual:"#8FA898",   manualBg:"#E8EFEB",
+  overlay:"#1C2B2499",
+};
+const DARK = {
+  shell:"#111A15", card:"#1A2820", cardBorder:"#253326", cardAlt:"#1F2E25",
+  text:"#EDE3CC",  textSub:"#8FA898", textMuted:"#4A5E52",
+  primary:"#4AA8D0", primarySoft:"#0D2A3A",
+  green:"#6AAF82",   greenSoft:"#122918",
+  coral:"#E07A52",   coralSoft:"#2E1810",
+  purple:"#9B7FD0",  purpleSoft:"#1E1530",
+  nav:"#111A15", navBorder:"#253326",
+  verified:"#4AA8D0", verifiedBg:"#0D2A3A",
+  manual:"#4A5E52",   manualBg:"#1A2820",
+  overlay:"#000000CC",
+};
+
+// ─── ACTIONS ──────────────────────────────────────────────────────────────────
+const CAR = 0.21;
+
+// group: "travel" | "life"
+const ACTIONS = [
+  // ── Getting Around (6) ───────────────────────────────────────────────────
+  { id:"walk",    label:"Walked",         icon:"🚶", group:"travel",
+    hasDistance:true, co2PerKm:CAR,       creditsPerKm:10, unit:"vs. driving" },
+  { id:"cycle",   label:"Cycled",         icon:"🚲", group:"travel",
+    hasDistance:true, co2PerKm:CAR,       creditsPerKm:12, unit:"vs. driving" },
+  { id:"transit", label:"Public Transit", icon:"🚌", group:"travel",
+    hasDistance:true, co2PerKm:null,      creditsPerKm:8,  unit:"vs. solo car",
+    subtypes:[
+      { id:"bus",   label:"Bus",   icon:"🚌", co2PerKm:CAR-0.089 },
+      { id:"metro", label:"Metro", icon:"🚇", co2PerKm:CAR-0.041 },
+      { id:"train", label:"Train", icon:"🚂", co2PerKm:CAR-0.035 },
+    ]},
+  { id:"carpool", label:"Carpooled",      icon:"🚗👥", group:"travel",
+    hasDistance:true, co2PerKm:null,      creditsPerKm:7,  unit:"vs. solo drive",
+    hasPassengers:true },
+  { id:"ev",       label:"Drove EV",       icon:"🔋🚗", group:"travel",
+    hasDistance:true, co2PerKm:CAR*0.30,  creditsPerKm:6,  unit:"vs. petrol car",
+    subtypes:[
+      { id:"car",   label:"Electric Car", icon:"🔋🚗", co2PerKm:CAR*0.30 },
+      { id:"ebike", label:"E-Bike",       icon:"⚡🚲", co2PerKm:CAR*0.15 },
+    ]},
+  { id:"evcharge", label:"EV Charged",    icon:"⚡🔌", group:"travel",
+    hasDistance:false, co2:null, credits:10, unit:"kWh from charger · real data",
+    hasKwh:true },
+  // ── Lifestyle (3 + advocacy card = 4 visual slots) ─────────────────────────
+  { id:"vegmeal",  label:"Veg Meal",         icon:"🥗", group:"life",
+    hasDistance:false, co2:0.6, credits:5, unit:"vs. meat meal" },
+  { id:"electric", label:"Save Electricity", icon:"💡", group:"life",
+    hasDistance:false, co2:0.3, credits:4, unit:"lights / devices off" },
+  { id:"recycle",  label:"Recycled Products",icon:"♻️", group:"life",
+    hasDistance:false, co2:0.5, credits:6, unit:"reused / recycled item" },
+];
+
+// Advocacy actions live inside their own screen, not the main grid
+const ADVOCACY_ACTIONS = [
+  { id:"share",    label:"Shared Cause",    icon:"📣", credits:6,
+    unit:"posted about climate action",  cta:"Log share" },
+  { id:"petition", label:"Signed Petition", icon:"✍️", credits:8,
+    unit:"climate / environment petition", cta:"Log signature" },
+  { id:"ngo",      label:"Backed an NGO",   icon:"🌍", credits:10,
+    unit:"endorsed a vetted org",         cta:"Choose NGO", hasNGO:true },
+  { id:"refer",    label:"Referred Friend", icon:"👥", credits:12,
+    unit:"invited someone to ActSapien",  cta:"Copy invite", hasReferral:true },
+];
+
+const SECTIONS = [
+  { key:"travel", label:"Getting Around", icon:"🚗" },
+  { key:"life",   label:"Lifestyle",      icon:"🌿" },
+];
+
+const NGOS = [
+  { id:"wwf",  name:"WWF",         icon:"🐼", color:"#3A7D44", mission:"Protecting nature and wildlife worldwide since 1961.", url:"https://wwf.org" },
+  { id:"gp",   name:"Greenpeace",  icon:"☮️", color:"#1B7340", mission:"Independent campaigning for a peaceful, green future.", url:"https://greenpeace.org" },
+  { id:"ce",   name:"ClientEarth", icon:"⚖️", color:"#2A5FAD", mission:"Using the law to hold governments & polluters to account.", url:"https://clientearth.org" },
+  { id:"350",  name:"350.org",     icon:"🌱", color:"#1E7B4B", mission:"Building a global movement to end the fossil fuel era.", url:"https://350.org" },
+  { id:"cool", name:"Cool Earth",  icon:"🌳", color:"#4A7C59", mission:"Rainforest protection with indigenous communities.", url:"https://coolearth.org" },
+];
+
+const REFERRAL_CODE = "ACTSAPIEN-BETA";
+
+const FITNESS_APPS = [
+  { id:"strava",  label:"Strava",        icon:"🟠", color:"#FC4C02", tracks:["walk","cycle","ev"],           desc:"Runs, rides & more" },
+  { id:"nike",    label:"Nike Run Club",  icon:"⚫", color:"#111111", tracks:["walk"],                        desc:"Running & walking" },
+  { id:"health",  label:"Apple Health",   icon:"🍎", color:"#FF3B30", tracks:["walk","cycle","transit"],      desc:"Steps, distance & workouts" },
+  { id:"gfit",    label:"Google Fit",     icon:"🔵", color:"#4285F4", tracks:["walk","cycle"],                desc:"Activity & heart rate" },
+  { id:"garmin",  label:"Garmin Connect", icon:"🟣", color:"#006FBC", tracks:["walk","cycle","ev"],           desc:"GPS sports & EV data" },
+];
+
+const MOCK_HEALTH = {
+  walk:  { km:4.2, steps:5600 },
+  cycle: { km:8.1 },
+  ev:    { km:22.3 },
+  evcharge: { kwh:32 },
+};
+
+const CHALLENGES = [
+  { id:"nocar",    title:"No Car Week",        icon:"🚗", desc:"7 days car-free commutes",      days:7, bonus:120, total:7,  progress:0 },
+  { id:"evweek",   title:"EV All Week",         icon:"🔋", desc:"5 days of electric travel",     days:5, bonus:80,  total:5,  progress:0 },
+  { id:"greenlive",title:"Green Living",        icon:"🌿", desc:"Log 8 lifestyle actions",       days:4, bonus:50,  total:8,  progress:0 },
+  { id:"carpool5", title:"Carpool 5 Days",      icon:"🚗👥", desc:"Share rides for 5 days",     days:5, bonus:70,  total:5,  progress:0 },
+  { id:"co2hero",  title:"Save 10 kg CO₂",      icon:"🌍", desc:"Reach 10 kg total CO₂ saved", days:0, bonus:100, total:10, progress:0, isCo2Goal:true },
+  { id:"walker",   title:"100 km on Foot",      icon:"🚶", desc:"Walk or cycle 100 km total",   days:0, bonus:150, total:100, progress:0, isKmGoal:true },
+];
+
+const LEADERBOARD = [
+  { name:"Mia K.",   credits:1240, streak:18, avatar:"🌸", verifiedPct:92 },
+  { name:"Tom R.",   credits:1105, streak:14, avatar:"⚡", verifiedPct:78 },
+  { name:"Priya S.", credits:980,  streak:21, avatar:"🌿", verifiedPct:100 },
+  { name:"Alex M.",  credits:870,  streak:9,  avatar:"🔥", verifiedPct:55 },
+  { name:"Sam T.",   credits:760,  streak:7,  avatar:"💫", verifiedPct:40 },
+];
+
+const EQUIV = [
+  { icon:"🌳", label:"trees absorbing CO₂ for a day", per:21.7 },
+  { icon:"🚗", label:"km of petrol driving avoided",   per:0.21 },
+  { icon:"📱", label:"phones fully charged",           per:0.005 },
+];
+
+const PERIODS = ["Weekly","Monthly","Yearly","Lifetime"];
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+const today  = () => new Date().toDateString();
+const clamp  = (v,mn,mx) => Math.min(mx,Math.max(mn,v));
+const fmtKm  = v => v%1===0 ? String(v) : v.toFixed(1);
+
+function useStorage(key,init) {
+  const [val,setVal] = useState(()=>{
+    try{const s=localStorage.getItem(key);return s?JSON.parse(s):init;}catch{return init;}
+  });
+  const set = v=>{setVal(v);try{localStorage.setItem(key,JSON.stringify(v));}catch{}};
+  return [val,set];
+}
+
+function useDark() {
+  const [dark,setDark] = useState(()=>
+    typeof window!=="undefined"?window.matchMedia("(prefers-color-scheme:dark)").matches:false
+  );
+  useEffect(()=>{
+    const mq=window.matchMedia("(prefers-color-scheme:dark)");
+    const h=e=>setDark(e.matches);
+    mq.addEventListener("change",h);
+    return()=>mq.removeEventListener("change",h);
+  },[]);
+  return dark;
+}
+
+function calcAction(action,distKm,subtype,passengers) {
+  if(!action.hasDistance) return {co2:action.co2,credits:action.credits};
+  let cpm = action.co2PerKm;
+  if(action.subtypes&&subtype){const st=action.subtypes.find(s=>s.id===subtype);if(st)cpm=st.co2PerKm;}
+  if(action.hasPassengers&&passengers>1) cpm=CAR*(1-1/passengers);
+  return {
+    co2:     parseFloat((cpm*distKm).toFixed(3)),
+    credits: Math.max(1,Math.round(action.creditsPerKm*distKm)),
+  };
+}
+
+// ─── STYLE FACTORIES ──────────────────────────────────────────────────────────
+const mkShell  = t=>({width:"100%",maxWidth:420,margin:"0 auto",height:"100vh",
+  display:"flex",flexDirection:"column",background:t.shell,
+  fontFamily:"'DM Sans',sans-serif",color:t.text,position:"relative",overflow:"hidden"});
+const mkScreen = ()=>({display:"flex",flexDirection:"column",height:"100%",flex:1});
+const mkBtn    = (t,bg)=>({background:bg||t.green,color:"#fff",border:"none",
+  borderRadius:14,padding:"15px",fontSize:15,fontWeight:700,cursor:"pointer",display:"block"});
+
+// ─── SHARED UI ────────────────────────────────────────────────────────────────
+function VerifiedBadge({t,size="sm"}) {
+  const big=size==="lg";
+  return <span style={{display:"inline-flex",alignItems:"center",gap:3,background:t.verifiedBg,
+    border:`1px solid ${t.verified}44`,borderRadius:99,padding:big?"4px 10px":"2px 7px",
+    fontSize:big?12:10,fontWeight:700,color:t.verified,whiteSpace:"nowrap"}}>✦ {big?"Verified":"Verified"}</span>;
+}
+function ManualBadge({t,size="sm"}) {
+  const big=size==="lg";
+  return <span style={{display:"inline-flex",alignItems:"center",gap:3,background:t.manualBg,
+    border:`1px solid ${t.manual}44`,borderRadius:99,padding:big?"4px 10px":"2px 7px",
+    fontSize:big?12:10,fontWeight:600,color:t.manual,whiteSpace:"nowrap"}}>○ {big?"Self-reported":"Manual"}</span>;
+}
+function SectionHeader({t,label,icon,sub}) {
+  return (
+    <div style={{marginBottom:10,marginTop:6}}>
+      <div style={{color:t.textMuted,fontSize:11,textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>
+        {icon} {label}
+      </div>
+      {sub&&<div style={{color:t.textMuted,fontSize:10,marginTop:2}}>{sub}</div>}
+    </div>
+  );
+}
+function Toast({msg,t,onDone}) {
+  useEffect(()=>{const x=setTimeout(onDone,2600);return()=>clearTimeout(x);},[]);
+  return <div style={{position:"fixed",bottom:90,left:"50%",transform:"translateX(-50%)",
+    background:t.green,color:"#fff",padding:"12px 22px",borderRadius:99,fontWeight:700,
+    fontSize:14,zIndex:999,boxShadow:`0 4px 20px ${t.green}55`,
+    animation:"toastIn .3s ease",whiteSpace:"nowrap"}}>{msg}</div>;
+}
+function Confetti() {
+  const cols=["#4A7C59","#2A7FA5","#E8C98A","#C4623A","#9B7FD0","#6AAF82"];
+  return <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:998}}>
+    {Array.from({length:22},(_,i)=>({x:Math.random()*100,delay:Math.random()*0.4,
+      color:cols[i%cols.length],size:6+Math.random()*8})).map((c,i)=>
+      <div key={i} style={{position:"absolute",left:`${c.x}%`,top:"-10px",
+        width:c.size,height:c.size,background:c.color,borderRadius:c.size/3,
+        animation:`confettiFall 1.3s ${c.delay}s ease-in forwards`}}/>)}
+  </div>;
+}
+
+// ─── NGO MODAL ────────────────────────────────────────────────────────────────
+function NGOModal({t,onSelect,onClose}) {
+  return (
+    <div onClick={e=>e.target===e.currentTarget&&onClose()}
+      style={{position:"fixed",inset:0,background:t.overlay,zIndex:250,
+        display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+      <div style={{background:t.card,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:420,
+        paddingBottom:32,animation:"slideUp .28s ease",maxHeight:"80vh",overflowY:"auto",
+        border:`1px solid ${t.cardBorder}`}}>
+        <div style={{display:"flex",justifyContent:"center",padding:"14px 0 6px"}}>
+          <div style={{width:40,height:4,background:t.cardBorder,borderRadius:99}}/>
+        </div>
+        <div style={{padding:"8px 24px 14px",borderBottom:`1px solid ${t.cardBorder}`,
+          display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{color:t.text,fontWeight:800,fontSize:18}}>Back an NGO</div>
+            <div style={{color:t.textSub,fontSize:13,marginTop:2}}>Vetted climate organisations</div>
+          </div>
+          <button onClick={onClose} style={{background:t.cardAlt,border:"none",color:t.textSub,
+            borderRadius:99,width:32,height:32,cursor:"pointer",fontSize:15,
+            display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:10,padding:"14px 20px"}}>
+          {NGOS.map(ngo=>(
+            <div key={ngo.id} style={{background:t.cardAlt,borderRadius:14,padding:"14px 16px",
+              border:`1px solid ${t.cardBorder}`,display:"flex",gap:12,alignItems:"center"}}>
+              <div style={{width:44,height:44,borderRadius:12,background:ngo.color+"22",
+                border:`1px solid ${ngo.color}44`,display:"flex",alignItems:"center",
+                justifyContent:"center",fontSize:22,flexShrink:0}}>{ngo.icon}</div>
+              <div style={{flex:1}}>
+                <div style={{color:t.text,fontWeight:700,fontSize:14}}>{ngo.name}</div>
+                <div style={{color:t.textSub,fontSize:12,marginTop:2,lineHeight:1.4}}>{ngo.mission}</div>
+              </div>
+              <button onClick={()=>onSelect(ngo)}
+                style={{background:t.green,color:"#fff",border:"none",borderRadius:99,
+                  padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                Endorse
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── DISTANCE MODAL ───────────────────────────────────────────────────────────
+const PRESETS    = [0.5,1,2,3,5,10,15,20,30];
+const SLIDER_MAX = 50;
+
+function DistanceModal({action,t,connectedApps,onConfirm,onClose}) {
+  const [km,setKm]             = useState(2);
+  const [inputVal,setInputVal] = useState("2");
+  const [subtype,setSubtype]   = useState(action.subtypes?.[0]?.id||null);
+  const [passengers,setPass]   = useState(2);
+  const [editing,setEditing]   = useState(false);
+  const [useApp,setUseApp]     = useState(false);
+  const inputRef = useRef();
+
+  const healthData   = MOCK_HEALTH[action.id];
+  const connectedApp = FITNESS_APPS.find(a=>connectedApps.includes(a.id)&&a.tracks.includes(action.id));
+  const canVerify    = !!connectedApp&&!!healthData;
+
+  useEffect(()=>{
+    if(canVerify){setUseApp(true);setKm(healthData.km);setInputVal(fmtKm(healthData.km));}
+  },[]);
+
+  const handleSlider=e=>{const v=parseFloat(e.target.value);setKm(v);setInputVal(fmtKm(v));};
+  const handleBlur=()=>{const n=parseFloat(inputVal);const c=isNaN(n)||n<=0?1:clamp(n,.1,SLIDER_MAX);setKm(c);setInputVal(fmtKm(c));setEditing(false);};
+  const snap=p=>{setKm(p);setInputVal(String(p));setUseApp(false);};
+
+  const calc    = calcAction(action,km,subtype,passengers);
+  const stObj   = action.subtypes?.find(s=>s.id===subtype);
+  const fillPct = Math.min((km/SLIDER_MAX)*100,100);
+  const verified= useApp&&canVerify;
+  const thumbCol= verified?t.primary:t.green;
+
+  return (
+    <div onClick={e=>e.target===e.currentTarget&&onClose()}
+      style={{position:"fixed",inset:0,background:t.overlay,zIndex:200,
+        display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+      <div style={{background:t.card,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:420,
+        paddingBottom:32,animation:"slideUp .28s ease",maxHeight:"94vh",overflowY:"auto",
+        border:`1px solid ${t.cardBorder}`}}>
+        <div style={{display:"flex",justifyContent:"center",padding:"14px 0 6px"}}>
+          <div style={{width:40,height:4,background:t.cardBorder,borderRadius:99}}/>
+        </div>
+
+        <div style={{padding:"10px 24px 16px",borderBottom:`1px solid ${t.cardBorder}`,
+          display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:28}}>{stObj?.icon||action.icon}</span>
+            <div>
+              <div style={{color:t.text,fontWeight:800,fontSize:17}}>{action.label}</div>
+              <div style={{color:t.textSub,fontSize:12}}>{action.unit}</div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{background:t.cardAlt,border:"none",color:t.textSub,
+            borderRadius:99,width:32,height:32,cursor:"pointer",fontSize:15,
+            display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+        </div>
+
+        <div style={{padding:"16px 24px 0",display:"flex",flexDirection:"column",gap:16}}>
+
+          {/* App source toggle */}
+          {canVerify&&connectedApp&&(
+            <div style={{background:useApp?t.primarySoft:t.cardAlt,borderRadius:14,padding:"12px 14px",
+              border:`2px solid ${useApp?t.primary+"66":t.cardBorder}`,
+              display:"flex",justifyContent:"space-between",alignItems:"center",transition:"all .2s"}}>
+              <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                <div style={{width:32,height:32,borderRadius:8,background:connectedApp.color,
+                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>
+                  {connectedApp.icon}
+                </div>
+                <div>
+                  <div style={{color:t.text,fontSize:13,fontWeight:700}}>Use {connectedApp.label} data</div>
+                  <div style={{color:t.textSub,fontSize:11}}>{healthData.km} km today
+                    {healthData.steps?` · ${healthData.steps.toLocaleString()} steps`:""}
+                  </div>
+                </div>
+              </div>
+              <div onClick={()=>{setUseApp(v=>{if(!v){setKm(healthData.km);setInputVal(fmtKm(healthData.km));}return!v;})}}
+                style={{width:44,height:26,borderRadius:99,cursor:"pointer",
+                  background:useApp?t.primary:t.cardBorder,transition:"background .2s",position:"relative",flexShrink:0}}>
+                <div style={{position:"absolute",top:3,left:useApp?20:3,width:20,height:20,
+                  borderRadius:"50%",background:"#fff",transition:"left .2s"}}/>
+              </div>
+            </div>
+          )}
+
+          {/* Transit sub-types */}
+          {action.subtypes&&(
+            <div>
+              <div style={{color:t.textMuted,fontSize:11,marginBottom:10,
+                textTransform:"uppercase",letterSpacing:1}}>Transit type</div>
+              <div style={{display:"flex",gap:8}}>
+                {action.subtypes.map(st=>(
+                  <button key={st.id} onClick={()=>setSubtype(st.id)}
+                    style={{flex:1,background:subtype===st.id?t.greenSoft:t.cardAlt,
+                      border:`2px solid ${subtype===st.id?t.green:t.cardBorder}`,
+                      borderRadius:12,padding:"10px 6px",cursor:"pointer",
+                      display:"flex",flexDirection:"column",alignItems:"center",gap:4,transition:"all .15s"}}>
+                    <span style={{fontSize:20}}>{st.icon}</span>
+                    <span style={{color:subtype===st.id?t.green:t.textSub,fontSize:12,fontWeight:600}}>{st.label}</span>
+                    <span style={{color:t.textMuted,fontSize:10}}>{(st.co2PerKm*1000).toFixed(0)}g/km saved</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Carpool passengers */}
+          {action.hasPassengers&&(
+            <div>
+              <div style={{color:t.textMuted,fontSize:11,marginBottom:10,
+                textTransform:"uppercase",letterSpacing:1}}>People in car (including you)</div>
+              <div style={{display:"flex",gap:8,justifyContent:"center"}}>
+                {[2,3,4,5,6].map(n=>(
+                  <button key={n} onClick={()=>setPass(n)}
+                    style={{width:52,height:52,borderRadius:12,cursor:"pointer",transition:"all .15s",
+                      border:`2px solid ${passengers===n?t.green:t.cardBorder}`,
+                      background:passengers===n?t.greenSoft:t.cardAlt,
+                      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1}}>
+                    <span style={{color:passengers===n?t.green:t.textSub,fontWeight:700,fontSize:16}}>{n}</span>
+                    <span style={{fontSize:9}}>{Array.from({length:Math.min(n,3)}).map((_,i)=>"🧑").join("")}</span>
+                  </button>
+                ))}
+              </div>
+              <div style={{color:t.textMuted,fontSize:11,textAlign:"center",marginTop:8}}>
+                Saves ~{(CAR*(1-1/passengers)*km).toFixed(2)} kg at {fmtKm(km)} km
+              </div>
+            </div>
+          )}
+
+          {/* Distance input */}
+          <div style={{textAlign:"center",opacity:useApp?.5:1,pointerEvents:useApp?"none":"auto",transition:"opacity .2s"}}>
+            <div style={{color:t.textMuted,fontSize:11,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>
+              {useApp?"App data (auto)":"Distance"}
+            </div>
+            <div style={{display:"flex",alignItems:"baseline",justifyContent:"center",gap:6,marginBottom:16}}>
+              {editing?(
+                <input ref={inputRef} value={inputVal}
+                  onChange={e=>{setInputVal(e.target.value);const n=parseFloat(e.target.value);if(!isNaN(n)&&n>0)setKm(clamp(n,.1,SLIDER_MAX));}}
+                  onBlur={handleBlur} type="number" min="0.1" max="99" step="0.1"
+                  style={{background:"none",border:"none",borderBottom:`2px solid ${t.green}`,
+                    color:t.green,fontSize:52,fontWeight:800,width:110,textAlign:"center",
+                    outline:"none",fontFamily:"inherit"}} autoFocus/>
+              ):(
+                <div onClick={()=>{if(!useApp){setEditing(true);setTimeout(()=>inputRef.current?.select(),40);}}}
+                  style={{color:verified?t.primary:t.green,fontSize:52,fontWeight:800,
+                    cursor:useApp?"default":"text",minWidth:80,textAlign:"center",lineHeight:1.1,
+                    borderBottom:`2px solid ${useApp?"transparent":t.cardBorder}`}}>
+                  {fmtKm(km)}
+                </div>
+              )}
+              <div style={{color:t.textSub,fontSize:22,fontWeight:600,marginBottom:4}}>km</div>
+            </div>
+
+            {/* Slider */}
+            <div style={{position:"relative",height:24,display:"flex",alignItems:"center",marginBottom:12}}>
+              <div style={{position:"absolute",left:0,right:0,height:8,background:t.cardAlt,borderRadius:99}}/>
+              <div style={{position:"absolute",left:0,height:8,width:`${fillPct}%`,
+                background:`linear-gradient(90deg,${thumbCol},${verified?t.primary+"99":t.primary})`,
+                borderRadius:99,transition:"width .04s"}}/>
+              <div style={{position:"absolute",left:`calc(${fillPct}% - 11px)`,width:22,height:22,
+                background:thumbCol,borderRadius:"50%",boxShadow:`0 0 0 5px ${thumbCol}33`,
+                transition:"left .04s",pointerEvents:"none",zIndex:1}}/>
+              <input type="range" min={0.1} max={SLIDER_MAX} step={0.1} value={km}
+                onChange={handleSlider}
+                style={{position:"absolute",inset:0,width:"100%",opacity:0,cursor:"pointer",zIndex:2}}/>
+            </div>
+            <div style={{display:"flex",gap:5,flexWrap:"wrap",justifyContent:"center"}}>
+              {PRESETS.map(p=>{const active=Math.abs(km-p)<.05&&!useApp;return(
+                <button key={p} onClick={()=>snap(p)}
+                  style={{background:active?t.green:t.cardAlt,color:active?"#fff":t.textSub,
+                    border:`1px solid ${active?t.green:t.cardBorder}`,borderRadius:99,
+                    padding:"5px 11px",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all .15s"}}>
+                  {p<1?`${p*1000}m`:`${p}km`}
+                </button>
+              );})}
+            </div>
+          </div>
+
+          {/* Impact preview */}
+          <div style={{background:t.cardAlt,borderRadius:16,padding:"14px 8px",
+            display:"flex",justifyContent:"space-around",border:`1px solid ${t.cardBorder}`}}>
+            {[
+              {val:`+${calc.credits}`, sub:"credits",   color:t.green},
+              {val:`~${calc.co2} kg`,  sub:"CO₂ saved", color:t.primary},
+              {val:`${fmtKm(km)} km`,  sub:"logged",    color:verified?t.primary:t.coral},
+            ].map((s,i)=>(
+              <div key={i} style={{textAlign:"center",flex:1}}>
+                <div style={{color:s.color,fontWeight:800,fontSize:17}}>{s.val}</div>
+                <div style={{color:t.textMuted,fontSize:11,marginTop:2}}>{s.sub}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{display:"flex",justifyContent:"center"}}>
+            {verified?<VerifiedBadge t={t} size="lg"/>:<ManualBadge t={t} size="lg"/>}
+          </div>
+          <div style={{color:t.textMuted,fontSize:11,textAlign:"center"}}>
+            ~saves {(CAR*km).toFixed(2)} kg vs petrol car · estimates only
+          </div>
+
+          <button onClick={()=>onConfirm(calc,{km,subtype,passengers,verified})}
+            style={{...mkBtn(t,verified?t.primary:t.green),margin:0,width:"100%",borderRadius:14,fontSize:15}}>
+            {verified?"✦ Log verified":"Log"} {fmtKm(km)} km
+            {stObj?` by ${stObj.label}`:action.hasPassengers?` carpool (${passengers})`:` of ${action.label.toLowerCase()}`} ✓
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── FITNESS CONNECT MODAL ────────────────────────────────────────────────────
+function FitnessConnectModal({t,connectedApps,onConnect,onDisconnect,onClose}) {
+  const [selected,setSelected] = useState(null);
+  const [step,setStep]         = useState("list");
+  const [perms,setPerms]       = useState({walk:true,cycle:true,ebike:true,ev:false});
+  const app = FITNESS_APPS.find(a=>a.id===selected);
+  const doSync=()=>{setStep("syncing");setTimeout(()=>setStep("done"),1800);};
+
+  return (
+    <div onClick={e=>e.target===e.currentTarget&&onClose()}
+      style={{position:"fixed",inset:0,background:t.overlay,zIndex:300,
+        display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+      <div style={{background:t.card,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:420,
+        paddingBottom:36,animation:"slideUp .28s ease",maxHeight:"92vh",overflowY:"auto",
+        border:`1px solid ${t.cardBorder}`}}>
+        <div style={{display:"flex",justifyContent:"center",padding:"14px 0 6px"}}>
+          <div style={{width:40,height:4,background:t.cardBorder,borderRadius:99}}/>
+        </div>
+
+        {step==="list"&&(
+          <div style={{padding:"8px 24px 0",display:"flex",flexDirection:"column",gap:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{color:t.text,fontWeight:800,fontSize:18}}>Connect Fitness App</div>
+                <div style={{color:t.textSub,fontSize:13,marginTop:3}}>Auto-verify your activity</div>
+              </div>
+              <button onClick={onClose} style={{background:t.cardAlt,border:"none",color:t.textSub,
+                borderRadius:99,width:32,height:32,cursor:"pointer",fontSize:15,
+                display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+            </div>
+            <div style={{background:t.primarySoft,borderRadius:14,padding:"12px 14px",
+              border:`1px solid ${t.primary}33`}}>
+              <span style={{color:t.primary,fontSize:13,fontWeight:600,lineHeight:1.5}}>
+                ✦ Connected logs earn a Verified badge, making your impact more credible on the leaderboard.
+              </span>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {FITNESS_APPS.map(fa=>{
+                const connected=connectedApps.includes(fa.id);
+                return (
+                  <div key={fa.id} style={{background:t.cardAlt,borderRadius:14,padding:"14px 16px",
+                    border:`2px solid ${connected?t.primary+"55":t.cardBorder}`,
+                    display:"flex",alignItems:"center",gap:12}}>
+                    <div style={{width:40,height:40,borderRadius:12,background:fa.color,
+                      display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
+                      {fa.icon}
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{color:t.text,fontWeight:700,fontSize:14}}>{fa.label}</div>
+                      <div style={{color:t.textSub,fontSize:11,marginTop:2}}>{fa.desc}</div>
+                    </div>
+                    {connected?(
+                      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
+                        <VerifiedBadge t={t}/>
+                        <button onClick={()=>onDisconnect(fa.id)}
+                          style={{background:"none",border:`1px solid ${t.cardBorder}`,
+                            borderRadius:99,padding:"3px 10px",fontSize:11,color:t.textMuted,cursor:"pointer"}}>
+                          Disconnect
+                        </button>
+                      </div>
+                    ):(
+                      <button onClick={()=>{setSelected(fa.id);setStep("perms");}}
+                        style={{background:t.primary,border:"none",borderRadius:99,
+                          padding:"8px 14px",fontSize:13,fontWeight:700,color:"#fff",cursor:"pointer"}}>
+                        Connect
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{color:t.textMuted,fontSize:11,textAlign:"center",paddingBottom:4}}>
+              Beta — no real health data is read in this web version
+            </div>
+          </div>
+        )}
+
+        {step==="perms"&&app&&(
+          <div style={{padding:"8px 24px 0",display:"flex",flexDirection:"column",gap:14}}>
+            <div style={{display:"flex",alignItems:"center",gap:12}}>
+              <div style={{width:44,height:44,borderRadius:12,background:app.color,
+                display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>{app.icon}</div>
+              <div>
+                <div style={{color:t.text,fontWeight:800,fontSize:17}}>Allow {app.label}</div>
+                <div style={{color:t.textSub,fontSize:12}}>Choose what ActSapien can read</div>
+              </div>
+            </div>
+            {[{key:"walk",label:"Walking & Running",icon:"🏃"},{key:"cycle",label:"Cycling Distance",icon:"🚴"},
+              {key:"ebike",label:"E-Bike Activity",icon:"⚡🚲"},{key:"ev",label:"EV / GPS Routes",icon:"🔋"}]
+              .filter(p=>app.tracks.includes(p.key)).map(p=>(
+              <div key={p.key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+                background:t.cardAlt,borderRadius:14,padding:"13px 16px",
+                border:`1px solid ${perms[p.key]?t.primary+"44":t.cardBorder}`}}>
+                <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                  <span style={{fontSize:20}}>{p.icon}</span>
+                  <span style={{color:t.text,fontSize:14}}>{p.label}</span>
+                </div>
+                <div onClick={()=>setPerms(g=>({...g,[p.key]:!g[p.key]}))}
+                  style={{width:44,height:26,borderRadius:99,cursor:"pointer",
+                    background:perms[p.key]?t.primary:t.cardBorder,transition:"background .2s",
+                    position:"relative",flexShrink:0}}>
+                  <div style={{position:"absolute",top:3,left:perms[p.key]?20:3,width:20,height:20,
+                    borderRadius:"50%",background:"#fff",transition:"left .2s"}}/>
+                </div>
+              </div>
+            ))}
+            <button onClick={doSync}
+              style={{...mkBtn(t,app.color),margin:0,width:"100%",borderRadius:14}}>
+              Allow & Sync ✓
+            </button>
+          </div>
+        )}
+
+        {step==="syncing"&&(
+          <div style={{padding:"48px 24px",textAlign:"center",display:"flex",
+            flexDirection:"column",alignItems:"center",gap:18}}>
+            <div style={{fontSize:48,animation:"spin 1s linear infinite"}}>⟳</div>
+            <div style={{color:t.text,fontWeight:700,fontSize:16}}>Syncing with {app?.label}…</div>
+          </div>
+        )}
+
+        {step==="done"&&(
+          <div style={{padding:"16px 24px 0",display:"flex",flexDirection:"column",gap:14}}>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:48,marginBottom:10}}>🎉</div>
+              <div style={{color:t.text,fontWeight:800,fontSize:18,marginBottom:6}}>{app?.label} Connected!</div>
+              <div style={{color:t.textSub,fontSize:13}}>Your logs will now show a Verified badge.</div>
+            </div>
+            <button onClick={()=>{onConnect(selected);onClose();}}
+              style={{...mkBtn(t),margin:0,width:"100%",borderRadius:14}}>
+              Back to logging →
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── LOGIN ────────────────────────────────────────────────────────────────────
+function LoginScreen({t,onLogin}) {
+  const [step,setStep]=useState(0);
+  const [name,setName]=useState("");
+  const slides=[
+    {icon:"🌴",title:"A smarter human starts here",  body:"ActSapien helps you track, verify and share your daily impact — from how you move to how you speak up for the planet."},
+    {icon:"🔥",title:"Build streaks, earn credits",   body:"Log eco actions every day to keep your streak alive and earn Green Credits. Miss a day and it resets."},
+    {icon:"📣",title:"Advocacy counts too",           body:"Share the cause, sign petitions and back real NGOs. Every action — big or small — moves the needle."},
+  ];
+  if(step<3){const s=slides[step];return(
+    <div style={{...mkScreen(),background:t.shell}}>
+      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",
+        justifyContent:"center",gap:28,padding:"0 36px",textAlign:"center"}}>
+        <div style={{fontSize:68,animation:"bounce 1s ease infinite alternate"}}>{s.icon}</div>
+        <div>
+          <div style={{color:t.text,fontWeight:800,fontSize:24,marginBottom:10,lineHeight:1.2}}>{s.title}</div>
+          <div style={{color:t.textSub,fontSize:15,lineHeight:1.65}}>{s.body}</div>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          {[0,1,2].map(i=><div key={i} style={{width:i===step?24:8,height:8,borderRadius:4,
+            background:i===step?t.green:t.cardBorder,transition:"all .3s"}}/>)}
+        </div>
+      </div>
+      <div style={{padding:"0 24px 32px"}}>
+        <button style={{...mkBtn(t),margin:0,width:"100%",borderRadius:14}}
+          onClick={()=>setStep(step+1)}>{step<2?"Next →":"Almost there!"}</button>
+      </div>
+    </div>
+  );}
+  return(
+    <div style={{...mkScreen(),background:t.shell}}>
+      {/* Wordmark */}
+      <div style={{textAlign:"center",paddingTop:60}}>
+        <div style={{fontSize:32,fontWeight:800,color:t.green,letterSpacing:-1}}>ActSapien</div>
+
+      </div>
+      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",
+        justifyContent:"center",gap:20,padding:"0 32px"}}>
+        <div style={{color:t.text,fontWeight:800,fontSize:24,textAlign:"center"}}>What should we call you?</div>
+        <input value={name} onChange={e=>setName(e.target.value)} placeholder="Your name"
+          style={{width:"100%",background:t.card,border:`2px solid ${t.cardBorder}`,borderRadius:14,
+            padding:"14px 18px",color:t.text,fontSize:16,outline:"none",
+            boxSizing:"border-box",fontFamily:"inherit"}}/>
+      </div>
+      <div style={{padding:"0 24px 32px"}}>
+        <button style={{...mkBtn(t),margin:0,width:"100%",borderRadius:14,opacity:name.trim()?1:0.4}}
+          disabled={!name.trim()} onClick={()=>onLogin(name.trim())}>
+          Begin my journey 🌱
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── KWH MODAL (EV Charger) ───────────────────────────────────────────────────
+// kWh → CO₂ saved vs equivalent petrol driving
+// Average grid: ~0.233 kg CO₂/kWh; petrol car kWh-equivalent ~0.7 kg/kWh
+// Saving ≈ (0.7 - 0.233) × kWh = ~0.467 kg/kWh
+const KWH_SAVING = 0.467;
+const KWH_CREDITS_PER_UNIT = 4;
+
+function KwhModal({action, t, onConfirm, onClose}) {
+  const [kwh, setKwh]           = useState(20);
+  const [inputVal, setInputVal] = useState("20");
+  const [editing, setEditing]   = useState(false);
+  const inputRef = useRef();
+
+  const KWH_MAX = 100;
+  const KWH_PRESETS = [5,10,20,30,50,80];
+
+  const fmtK = v => v%1===0?String(v):v.toFixed(1);
+  const handleSlider = e=>{const v=parseFloat(e.target.value);setKwh(v);setInputVal(fmtK(v));};
+  const handleBlur   = ()=>{const n=parseFloat(inputVal);const c=isNaN(n)||n<=0?10:Math.min(KWH_MAX,Math.max(0.1,n));setKwh(c);setInputVal(fmtK(c));setEditing(false);};
+  const snap         = p=>{setKwh(p);setInputVal(String(p));};
+
+  const co2     = parseFloat((KWH_SAVING*kwh).toFixed(2));
+  const credits = Math.max(1,Math.round(KWH_CREDITS_PER_UNIT*kwh));
+  const fillPct = Math.min((kwh/KWH_MAX)*100,100);
+
+  return(
+    <div onClick={e=>e.target===e.currentTarget&&onClose()}
+      style={{position:"fixed",inset:0,background:t.overlay,zIndex:200,
+        display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+      <div style={{background:t.card,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:420,
+        paddingBottom:32,animation:"slideUp .28s ease",border:`1px solid ${t.cardBorder}`}}>
+        <div style={{display:"flex",justifyContent:"center",padding:"14px 0 6px"}}>
+          <div style={{width:40,height:4,background:t.cardBorder,borderRadius:99}}/>
+        </div>
+        <div style={{padding:"10px 24px 16px",borderBottom:`1px solid ${t.cardBorder}`,
+          display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:28}}>⚡🔌</span>
+            <div>
+              <div style={{color:t.text,fontWeight:800,fontSize:17}}>EV Charged</div>
+              <div style={{color:t.textSub,fontSize:12}}>Log kWh from your charging session</div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{background:t.cardAlt,border:"none",color:t.textSub,
+            borderRadius:99,width:32,height:32,cursor:"pointer",fontSize:15,
+            display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+        </div>
+
+        <div style={{padding:"16px 24px 0",display:"flex",flexDirection:"column",gap:16}}>
+          {/* Charger data note */}
+          <div style={{background:t.primarySoft,borderRadius:12,padding:"10px 14px",
+            border:`1px solid ${t.primary}33`,display:"flex",gap:8,alignItems:"flex-start"}}>
+            <span style={{color:t.primary,fontSize:14,marginTop:1}}>✦</span>
+            <span style={{color:t.primary,fontSize:12,lineHeight:1.5}}>
+              Find kWh on your charger app (Zap-Map, Chargepoint, Tesla, etc.) for a verified reading.
+            </span>
+          </div>
+
+          {/* kWh input */}
+          <div style={{textAlign:"center"}}>
+            <div style={{color:t.textMuted,fontSize:11,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>
+              Energy charged
+            </div>
+            <div style={{display:"flex",alignItems:"baseline",justifyContent:"center",gap:6,marginBottom:16}}>
+              {editing?(
+                <input ref={inputRef} value={inputVal}
+                  onChange={e=>{setInputVal(e.target.value);const n=parseFloat(e.target.value);if(!isNaN(n)&&n>0)setKwh(Math.min(KWH_MAX,Math.max(0.1,n)));}}
+                  onBlur={handleBlur} type="number" min="0.1" max="100" step="0.5"
+                  style={{background:"none",border:"none",borderBottom:`2px solid ${t.primary}`,
+                    color:t.primary,fontSize:52,fontWeight:800,width:110,textAlign:"center",
+                    outline:"none",fontFamily:"inherit"}} autoFocus/>
+              ):(
+                <div onClick={()=>{setEditing(true);setTimeout(()=>inputRef.current?.select(),40);}}
+                  style={{color:t.primary,fontSize:52,fontWeight:800,cursor:"text",
+                    borderBottom:`2px solid ${t.cardBorder}`,minWidth:80,textAlign:"center",lineHeight:1.1}}>
+                  {fmtK(kwh)}
+                </div>
+              )}
+              <div style={{color:t.textSub,fontSize:22,fontWeight:600,marginBottom:4}}>kWh</div>
+            </div>
+
+            {/* Slider */}
+            <div style={{position:"relative",height:24,display:"flex",alignItems:"center",marginBottom:12}}>
+              <div style={{position:"absolute",left:0,right:0,height:8,background:t.cardAlt,borderRadius:99}}/>
+              <div style={{position:"absolute",left:0,height:8,width:`${fillPct}%`,
+                background:`linear-gradient(90deg,${t.primary},${t.green})`,borderRadius:99}}/>
+              <div style={{position:"absolute",left:`calc(${fillPct}% - 11px)`,width:22,height:22,
+                background:t.primary,borderRadius:"50%",boxShadow:`0 0 0 5px ${t.primary}33`,
+                pointerEvents:"none",zIndex:1}}/>
+              <input type="range" min={0.1} max={KWH_MAX} step={0.5} value={kwh}
+                onChange={handleSlider}
+                style={{position:"absolute",inset:0,width:"100%",opacity:0,cursor:"pointer",zIndex:2}}/>
+            </div>
+
+            <div style={{display:"flex",gap:5,flexWrap:"wrap",justifyContent:"center"}}>
+              {KWH_PRESETS.map(p=>{
+                const active=Math.abs(kwh-p)<0.1;
+                return(
+                  <button key={p} onClick={()=>snap(p)}
+                    style={{background:active?t.primary:t.cardAlt,color:active?"#fff":t.textSub,
+                      border:`1px solid ${active?t.primary:t.cardBorder}`,borderRadius:99,
+                      padding:"5px 11px",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all .15s"}}>
+                    {p} kWh
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Impact preview */}
+          <div style={{background:t.cardAlt,borderRadius:16,padding:"14px 8px",
+            display:"flex",justifyContent:"space-around",border:`1px solid ${t.cardBorder}`}}>
+            {[
+              {val:`+${credits}`, sub:"credits",   color:t.green},
+              {val:`~${co2} kg`,  sub:"CO₂ saved", color:t.primary},
+              {val:`${fmtK(kwh)} kWh`, sub:"charged", color:t.coral},
+            ].map((s,i)=>(
+              <div key={i} style={{textAlign:"center",flex:1}}>
+                <div style={{color:s.color,fontWeight:800,fontSize:17}}>{s.val}</div>
+                <div style={{color:t.textMuted,fontSize:11,marginTop:2}}>{s.sub}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{color:t.textMuted,fontSize:11,textAlign:"center"}}>
+            ~{co2} kg saved vs equivalent petrol · grid emissions vary by region
+          </div>
+
+          <button onClick={()=>onConfirm({co2,credits,kwh})}
+            style={{...mkBtn(t,t.primary),margin:0,width:"100%",borderRadius:14,fontSize:15}}>
+            Log {fmtK(kwh)} kWh charged ✓
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ADVOCACY SCREEN (slides up as modal) ─────────────────────────────────────
+function AdvocacyScreen({t, user, onLog, onClose}) {
+  const [ngoModal, setNGO] = useState(false);
+  const todayLogs  = user.todayLogs||[];
+  const loggedIds  = todayLogs.map(l=>l.id);
+  const totalCredits = ADVOCACY_ACTIONS.reduce((s,a)=>s+(loggedIds.includes(a.id)?a.credits:0),0);
+
+  const handleTap = a => {
+    if(loggedIds.includes(a.id)) return;
+    if(a.hasNGO){ setNGO(true); return; }
+    if(a.hasReferral){
+      navigator.clipboard?.writeText(`Join me on ActSapien! Use code ${REFERRAL_CODE} to get started 🌿`).catch(()=>{});
+      onLog(a,{co2:0,credits:a.credits},{verified:false,note:"referral"});
+      return;
+    }
+    onLog(a,{co2:0,credits:a.credits},{verified:false});
+  };
+  const handleNGO = ngo => {
+    setNGO(false);
+    const a = ADVOCACY_ACTIONS.find(x=>x.id==="ngo");
+    onLog(a,{co2:0,credits:a.credits},{verified:false,ngo:ngo.id,ngoName:ngo.name});
+  };
+
+  return(
+    <>
+      <div onClick={e=>e.target===e.currentTarget&&onClose()}
+        style={{position:"fixed",inset:0,background:t.overlay,zIndex:200,
+          display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+        <div style={{background:t.shell,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:420,
+          paddingBottom:36,animation:"slideUp .3s ease",maxHeight:"88vh",overflowY:"auto",
+          border:`1px solid ${t.cardBorder}`}}>
+
+          {/* Handle */}
+          <div style={{display:"flex",justifyContent:"center",padding:"14px 0 6px"}}>
+            <div style={{width:40,height:4,background:t.cardBorder,borderRadius:99}}/>
+          </div>
+
+          {/* Header */}
+          <div style={{padding:"8px 24px 16px",borderBottom:`1px solid ${t.cardBorder}`,
+            display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{color:t.text,fontWeight:800,fontSize:20}}>Advocacy</div>
+              <div style={{color:t.textSub,fontSize:13,marginTop:3}}>Spread the word · earns Green Credits</div>
+            </div>
+            <button onClick={onClose} style={{background:t.cardAlt,border:"none",color:t.textSub,
+              borderRadius:99,width:32,height:32,cursor:"pointer",fontSize:15,
+              display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+          </div>
+
+          {/* Progress strip */}
+          <div style={{margin:"14px 20px 6px",background:t.card,borderRadius:14,
+            padding:"12px 16px",border:`1px solid ${t.cardBorder}`,
+            display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{color:t.textSub,fontSize:13}}>Today's advocacy</div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              {ADVOCACY_ACTIONS.map(a=>(
+                <div key={a.id} style={{width:10,height:10,borderRadius:"50%",
+                  background:loggedIds.includes(a.id)?t.green:t.cardBorder,
+                  transition:"background .3s"}}/>
+              ))}
+              {totalCredits>0&&(
+                <span style={{color:t.green,fontWeight:700,fontSize:13,marginLeft:4}}>+{totalCredits}</span>
+              )}
+            </div>
+          </div>
+
+          {/* Action cards */}
+          <div style={{display:"flex",flexDirection:"column",gap:10,padding:"10px 20px"}}>
+            {ADVOCACY_ACTIONS.map(a=>{
+              const done=loggedIds.includes(a.id);
+              const log=todayLogs.find(l=>l.id===a.id);
+              return(
+                <button key={a.id} onClick={()=>handleTap(a)}
+                  style={{background:done?t.greenSoft:t.card,
+                    border:`2px solid ${done?t.green+"66":t.cardBorder}`,
+                    borderRadius:16,padding:"16px",cursor:done?"default":"pointer",
+                    textAlign:"left",transition:"all .2s",display:"flex",gap:14,alignItems:"center"}}>
+                  <div style={{fontSize:28,flexShrink:0}}>{a.icon}</div>
+                  <div style={{flex:1}}>
+                    <div style={{color:t.text,fontWeight:700,fontSize:15}}>{a.label}</div>
+                    <div style={{color:done?t.green:t.textSub,fontSize:12,marginTop:3}}>
+                      {done
+                        ?(log?.ngoName?`→ ${log.ngoName} · +${a.credits} credits`:`+${a.credits} credits logged`)
+                        :a.unit}
+                    </div>
+                  </div>
+                  <div style={{flexShrink:0}}>
+                    {done
+                      ?<span style={{color:t.green,fontSize:18}}>✓</span>
+                      :<span style={{background:t.greenSoft,color:t.green,borderRadius:99,
+                        padding:"5px 12px",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>
+                        +{a.credits}
+                      </span>
+                    }
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{color:t.textMuted,fontSize:11,textAlign:"center",padding:"14px 20px 0"}}>
+            Advocacy actions are self-reported · no CO₂ value assigned
+          </div>
+        </div>
+      </div>
+      {ngoModal&&<NGOModal t={t} onSelect={handleNGO} onClose={()=>setNGO(false)}/>}
+    </>
+  );
+}
+
+// ─── HOME ─────────────────────────────────────────────────────────────────────
+function HomeScreen({user,setUser,t,connectedApps,onLog,onOpenFitness}) {
+  const [modal,setModal]           = useState(null);
+  const [kwhModal,setKwhModal]     = useState(false);
+  const [showAdvocacy,setAdvocacy] = useState(false);
+  const [showGoalPicker,setGoalPicker] = useState(false);
+  const co2Goal    = user.co2Goal || 1.0; // kg CO₂ saved daily goal
+  const todayLogs  = user.todayLogs||[];
+  const loggedIds  = todayLogs.map(l=>l.id);
+  const verCount   = todayLogs.filter(l=>l.verified).length;
+  const todayCo2   = todayLogs.reduce((s,l)=>s+(l.co2||0),0);
+  const pct        = Math.min(todayCo2/co2Goal,1);
+  const advDone    = ADVOCACY_ACTIONS.filter(a=>loggedIds.includes(a.id)).length;
+  const CO2_GOALS  = [0.5,1.0,1.5,2.0,3.0,5.0];
+
+  const handleTap = a=>{
+    if(loggedIds.includes(a.id)) return;
+    if(a.hasDistance){setModal(a);return;}
+    if(a.hasKwh){setKwhModal(true);return;}
+    onLog(a,{co2:a.co2,credits:a.credits},{verified:false});
+  };
+
+  const renderGrid=(actions, equalHeight=false)=>(
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:4,
+      gridAutoRows: equalHeight?"1fr":"auto"}}>
+      {actions.map(a=>{
+        const done=loggedIds.includes(a.id);
+        const log=todayLogs.find(l=>l.id===a.id);
+        const appDot=!done&&connectedApps.length>0&&MOCK_HEALTH[a.id];
+        const borderCol=done?(log?.verified?t.primary+"66":t.green+"66"):t.cardBorder;
+        const bgCol=done?(log?.verified?t.primarySoft:t.greenSoft):t.card;
+        const subCol=done?(log?.verified?t.primary:t.green):t.textSub;
+        return(
+          <button key={a.id} onClick={()=>handleTap(a)}
+            style={{background:bgCol,border:`2px solid ${borderCol}`,borderRadius:16,
+              padding:"14px 12px",cursor:done?"default":"pointer",
+              textAlign:"left",transition:"all .2s",position:"relative",
+              display:"flex",flexDirection:"column",justifyContent:"flex-start"}}>
+            <div style={{fontSize:22,marginBottom:6}}>{a.icon}</div>
+            <div style={{color:t.text,fontWeight:700,fontSize:13}}>{a.label}</div>
+            <div style={{color:subCol,fontSize:11,marginTop:3}}>
+              {done
+                ?(log?.km?`${log.km>=1?log.km.toFixed(1)+"km":Math.round(log.km*1000)+"m"} · +${log.credits}`
+                  :log?.kwh?`${log.kwh} kWh · +${log.credits}`
+                  :`+${log.credits} credits`)
+                :(a.hasDistance?"Set distance →":a.hasKwh?"Log kWh →":`+${a.credits} credits`)}
+            </div>
+            {done&&<div style={{marginTop:6}}>
+              {log?.verified?<VerifiedBadge t={t}/>:<ManualBadge t={t}/>}
+            </div>}
+            {appDot&&<div style={{position:"absolute",top:10,right:10,
+              width:8,height:8,borderRadius:"50%",background:t.primary}}/>}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  return(
+    <>
+      <div style={{...mkScreen(),background:t.shell,overflowY:"auto",paddingBottom:88}}>
+        {/* Header */}
+        <div style={{padding:"20px 20px 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{color:t.textMuted,fontSize:11,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>ActSapien</div>
+            <div style={{color:t.text,fontWeight:800,fontSize:21,marginTop:2}}>Hey, {user.name} 👋</div>
+          </div>
+          <div style={{background:t.coralSoft,border:`1px solid ${t.coral}44`,
+            borderRadius:99,padding:"6px 14px",fontSize:14,fontWeight:700,color:t.coral}}>
+            🔥 {user.streak}
+          </div>
+        </div>
+
+        {/* Fitness banner */}
+        {connectedApps.length===0?(
+          <div onClick={onOpenFitness} style={{margin:"12px 20px 0",background:t.primarySoft,
+            border:`1px solid ${t.primary}44`,borderRadius:16,padding:"12px 16px",
+            display:"flex",gap:12,alignItems:"center",cursor:"pointer"}}>
+            <span style={{fontSize:22}}>🏃</span>
+            <div style={{flex:1}}>
+              <div style={{color:t.primary,fontWeight:700,fontSize:13}}>Connect your fitness app</div>
+              <div style={{color:t.textSub,fontSize:11,marginTop:1}}>Strava · Apple Health · Garmin & more</div>
+            </div>
+            <span style={{color:t.primary,fontSize:20}}>›</span>
+          </div>
+        ):(
+          <div style={{margin:"12px 20px 0",background:t.primarySoft,
+            border:`1px solid ${t.primary}33`,borderRadius:16,padding:"10px 16px",
+            display:"flex",gap:10,alignItems:"center"}}>
+            <div style={{display:"flex",gap:4}}>
+              {connectedApps.slice(0,3).map(id=>{
+                const fa=FITNESS_APPS.find(a=>a.id===id);
+                return fa?<div key={id} style={{width:24,height:24,borderRadius:6,background:fa.color,
+                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>{fa.icon}</div>:null;
+              })}
+            </div>
+            <div style={{flex:1,color:t.primary,fontSize:12,fontWeight:600}}>
+              {connectedApps.length} app{connectedApps.length>1?"s":""} connected
+              {verCount>0?` · ${verCount} verified today`:""}
+            </div>
+            <VerifiedBadge t={t}/>
+          </div>
+        )}
+
+        {/* Stats row */}
+        <div style={{display:"flex",gap:10,padding:"12px 20px"}}>
+          {[
+            {label:"Green Credits", value:user.credits||0,                        icon:"🌿",color:t.green},
+            {label:"Carbon Score",  value:`~${(user.co2||0).toFixed(1)} kg`,      icon:"🌊",color:t.primary},
+            {label:"Streak",        value:`${user.streak||0} days`,               icon:"🔥",color:t.coral},
+          ].map(s=>(
+            <div key={s.label} style={{flex:1,background:t.card,borderRadius:16,
+              padding:"12px 10px",border:`1px solid ${t.cardBorder}`}}>
+              <div style={{fontSize:18}}>{s.icon}</div>
+              <div style={{color:s.color,fontWeight:800,fontSize:17,margin:"4px 0 2px"}}>{s.value}</div>
+              <div style={{color:t.textSub,fontSize:10}}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Progress bar — CO₂ goal */}
+        <div style={{margin:"0 20px 16px",background:t.card,borderRadius:16,
+          padding:14,border:`1px solid ${t.cardBorder}`}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div style={{color:t.text,fontWeight:600,fontSize:14}}>Today's CO₂ saved</div>
+            <button onClick={()=>setGoalPicker(true)}
+              style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:99,
+                padding:"3px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+              <span style={{color:t.green,fontSize:12,fontWeight:700}}>
+                ~{todayCo2.toFixed(2)} / {co2Goal} kg
+              </span>
+              <span style={{color:t.textMuted,fontSize:11}}>⚙️</span>
+            </button>
+          </div>
+          <div style={{height:10,background:t.cardAlt,borderRadius:99,overflow:"hidden"}}>
+            <div style={{height:"100%",width:`${pct*100}%`,
+              background:`linear-gradient(90deg,${t.green},${t.primary})`,
+              borderRadius:99,transition:"width .6s"}}/>
+          </div>
+          {pct>=1&&<div style={{color:t.green,fontSize:12,marginTop:8,textAlign:"center",fontWeight:600}}>
+            🎉 Daily CO₂ goal smashed!
+          </div>}
+        </div>
+
+        {/* CO₂ Goal Picker */}
+        {showGoalPicker&&(
+          <div onClick={e=>e.target===e.currentTarget&&setGoalPicker(false)}
+            style={{position:"fixed",inset:0,background:t.overlay,zIndex:250,
+              display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+            <div style={{background:t.card,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:420,
+              paddingBottom:32,animation:"slideUp .28s ease",border:`1px solid ${t.cardBorder}`}}>
+              <div style={{display:"flex",justifyContent:"center",padding:"14px 0 6px"}}>
+                <div style={{width:40,height:4,background:t.cardBorder,borderRadius:99}}/>
+              </div>
+              <div style={{padding:"10px 24px 20px"}}>
+                <div style={{color:t.text,fontWeight:800,fontSize:18,marginBottom:4}}>Daily CO₂ Goal</div>
+                <div style={{color:t.textSub,fontSize:13,marginBottom:20}}>
+                  How much CO₂ do you aim to save each day?
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+                  {CO2_GOALS.map(g=>{
+                    const active=co2Goal===g;
+                    return(
+                      <button key={g} onClick={()=>{setUser({...user,co2Goal:g});setGoalPicker(false);}}
+                        style={{background:active?t.green:t.cardAlt,
+                          color:active?"#fff":t.textSub,
+                          border:`2px solid ${active?t.green:t.cardBorder}`,
+                          borderRadius:14,padding:"14px 8px",cursor:"pointer",
+                          display:"flex",flexDirection:"column",alignItems:"center",gap:4,
+                          transition:"all .2s"}}>
+                        <span style={{fontWeight:800,fontSize:18}}>{g}</span>
+                        <span style={{fontSize:11}}>kg CO₂</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{color:t.textMuted,fontSize:11,textAlign:"center",marginTop:14}}>
+                  ⚠️ Based on estimated values · not precisely measured
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Action sections */}
+        <div style={{padding:"0 20px"}}>
+
+          {/* Getting Around */}
+          <SectionHeader t={t} label="Getting Around" icon="🚗"/>
+          {renderGrid(ACTIONS.filter(a=>a.group==="travel"))}
+          <div style={{height:14}}/>
+
+          {/* Lifestyle + Advocacy as unified 2×2 equal grid */}
+          <SectionHeader t={t} label="Lifestyle" icon="🌿"/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,
+            gridAutoRows:"1fr",marginBottom:4}}>
+            {ACTIONS.filter(a=>a.group==="life").map(a=>{
+              const done=loggedIds.includes(a.id);
+              const log=todayLogs.find(l=>l.id===a.id);
+              const borderCol=done?(log?.verified?t.primary+"66":t.green+"66"):t.cardBorder;
+              const bgCol=done?(log?.verified?t.primarySoft:t.greenSoft):t.card;
+              const subCol=done?(log?.verified?t.primary:t.green):t.textSub;
+              return(
+                <button key={a.id} onClick={()=>handleTap(a)}
+                  style={{background:bgCol,border:`2px solid ${borderCol}`,borderRadius:16,
+                    padding:"14px 12px",cursor:done?"default":"pointer",
+                    textAlign:"left",transition:"all .2s",position:"relative",
+                    display:"flex",flexDirection:"column",justifyContent:"flex-start"}}>
+                  <div style={{fontSize:22,marginBottom:6}}>{a.icon}</div>
+                  <div style={{color:t.text,fontWeight:700,fontSize:13}}>{a.label}</div>
+                  <div style={{color:subCol,fontSize:11,marginTop:3}}>
+                    {done?`+${log.credits} credits`:`+${a.credits} credits`}
+                  </div>
+                  {done&&<div style={{marginTop:6}}>
+                    {log?.verified?<VerifiedBadge t={t}/>:<ManualBadge t={t}/>}
+                  </div>}
+                </button>
+              );
+            })}
+            {/* Advocacy — 4th cell, same size */}
+            <button onClick={()=>setAdvocacy(true)}
+              style={{background:advDone>0?t.greenSoft:t.card,
+                border:`2px solid ${advDone>0?t.green+"66":t.cardBorder}`,
+                borderRadius:16,padding:"14px 12px",cursor:"pointer",
+                textAlign:"left",transition:"all .2s",
+                display:"flex",flexDirection:"column",justifyContent:"flex-start"}}>
+              <div style={{fontSize:22,marginBottom:6}}>📣</div>
+              <div style={{color:t.text,fontWeight:700,fontSize:13}}>Advocacy</div>
+              <div style={{color:advDone>0?t.green:t.textSub,fontSize:11,marginTop:3}}>
+                {advDone>0?`${advDone}/${ADVOCACY_ACTIONS.length} done`:"for a cause →"}
+              </div>
+              {advDone>0&&(
+                <div style={{display:"flex",gap:4,marginTop:6}}>
+                  {ADVOCACY_ACTIONS.map(a=>(
+                    <div key={a.id} style={{width:7,height:7,borderRadius:"50%",
+                      background:loggedIds.includes(a.id)?t.green:t.cardBorder,
+                      transition:"background .3s"}}/>
+                  ))}
+                </div>
+              )}
+            </button>
+          </div>
+        </div>
+
+        <div style={{color:t.textMuted,fontSize:11,textAlign:"center",padding:"4px 20px 8px"}}>
+          ⚠️ Carbon Score is an estimate. Advocacy actions are self-reported.
+        </div>
+      </div>
+
+      {modal&&<DistanceModal action={modal} t={t} connectedApps={connectedApps}
+        onConfirm={(calc,meta)=>{onLog(modal,calc,meta);setModal(null);}}
+        onClose={()=>setModal(null)}/>}
+      {kwhModal&&<KwhModal action={ACTIONS.find(a=>a.id==="evcharge")} t={t}
+        onConfirm={({co2,credits,kwh})=>{
+          onLog(ACTIONS.find(a=>a.id==="evcharge"),{co2,credits},{verified:false,kwh});
+          setKwhModal(false);
+        }}
+        onClose={()=>setKwhModal(false)}/>}
+      {showAdvocacy&&<AdvocacyScreen t={t} user={user} onLog={onLog} onClose={()=>setAdvocacy(false)}/>}
+    </>
+  );
+}
+
+// ─── CHALLENGES ───────────────────────────────────────────────────────────────
+function ChallengesScreen({t}) {
+  const [active,setActive]=useStorage("act_ch",CHALLENGES.map(c=>({...c})));
+  const [toast,setToast]=useState(null);
+  const join=ch=>{setActive(active.map(c=>c.id===ch.id?{...c,joined:true}:c));setToast(`Joined "${ch.title}"! 💪`);};
+  return(
+    <div style={{...mkScreen(),background:t.shell,overflowY:"auto",paddingBottom:88}}>
+      <div style={{padding:"22px 20px 0"}}>
+        <div style={{color:t.textMuted,fontSize:11,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>ActSapien</div>
+        <div style={{color:t.text,fontWeight:800,fontSize:22,marginTop:4}}>Challenges</div>
+        <div style={{color:t.textSub,fontSize:13,marginTop:4}}>Complete goals for bonus credits</div>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:14,padding:20}}>
+        {active.map(ch=>{
+          const p=Math.min((ch.progress||0)/ch.total,1);const done=p>=1;
+          return(
+            <div key={ch.id} style={{background:t.card,
+              border:`2px solid ${done?t.green+"66":ch.joined?t.primary+"33":t.cardBorder}`,
+              borderRadius:18,padding:18}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                  <span style={{fontSize:32}}>{ch.icon}</span>
+                  <div>
+                    <div style={{color:t.text,fontWeight:700,fontSize:15}}>{ch.title}</div>
+                    <div style={{color:t.textSub,fontSize:12,marginTop:2}}>{ch.desc}</div>
+                  </div>
+                </div>
+                <div style={{background:t.greenSoft,color:t.green,borderRadius:99,
+                  padding:"4px 10px",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>
+                  +{ch.bonus} 🌿
+                </div>
+              </div>
+              {ch.joined&&(
+                <div style={{marginTop:14}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:t.textSub,marginBottom:6}}>
+                    <span>Progress</span><span>{ch.progress||0}/{ch.total}</span>
+                  </div>
+                  <div style={{height:8,background:t.cardAlt,borderRadius:99,overflow:"hidden"}}>
+                    <div style={{height:"100%",width:`${p*100}%`,
+                      background:done?t.green:`linear-gradient(90deg,${t.primary},${t.green})`,
+                      borderRadius:99,transition:"width .6s"}}/>
+                  </div>
+                  {done&&<div style={{color:t.green,textAlign:"center",marginTop:8,fontSize:13,fontWeight:700}}>
+                    🎉 Complete! +{ch.bonus} credits earned
+                  </div>}
+                </div>
+              )}
+              {!ch.joined&&(
+                <button style={{...mkBtn(t),marginTop:14,padding:"10px 0",fontSize:13,width:"100%",borderRadius:12}}
+                  onClick={()=>join(ch)}>Join Challenge</button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {toast&&<Toast msg={toast} t={t} onDone={()=>setToast(null)}/>}
+    </div>
+  );
+}
+
+// ─── IMPACT ───────────────────────────────────────────────────────────────────
+function ImpactScreen({user,t}) {
+  const [period,setPeriod]=useState("Lifetime");
+  const base={co2:user.allTimeCo2||0,totalKm:user.totalKm||0,
+    verified:user.verifiedCo2||0,credits:user.credits||0};
+
+  // Simulate period fractions for demo purposes
+  const scaleFactor={Weekly:.05,Monthly:.2,Yearly:.9,Lifetime:1}[period]||1;
+  const co2      = parseFloat((base.co2*scaleFactor).toFixed(2));
+  const totalKm  = parseFloat((base.totalKm*scaleFactor).toFixed(1));
+  const verified = parseFloat((base.verified*scaleFactor).toFixed(2));
+  const manual   = Math.max(0,parseFloat((co2-verified).toFixed(2)));
+  const verPct   = co2>0?Math.round((verified/co2)*100):0;
+  const credits  = Math.round(base.credits*scaleFactor);
+
+  return(
+    <div style={{...mkScreen(),background:t.shell,overflowY:"auto",paddingBottom:88}}>
+      <div style={{padding:"22px 20px 12px"}}>
+        <div style={{color:t.textMuted,fontSize:11,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>ActSapien</div>
+        <div style={{color:t.text,fontWeight:800,fontSize:22,marginTop:4}}>Your Impact</div>
+        <div style={{color:t.textSub,fontSize:13,marginTop:4}}>~estimates · not third-party verified</div>
+      </div>
+
+      {/* Period tabs */}
+      <div style={{display:"flex",gap:6,padding:"0 20px 16px"}}>
+        {PERIODS.map(p=>(
+          <button key={p} onClick={()=>setPeriod(p)}
+            style={{flex:1,background:period===p?t.green:t.card,
+              color:period===p?"#fff":t.textSub,
+              border:`1px solid ${period===p?t.green:t.cardBorder}`,
+              borderRadius:99,padding:"7px 4px",fontSize:11,fontWeight:700,
+              cursor:"pointer",transition:"all .2s"}}>
+            {p}
+          </button>
+        ))}
+      </div>
+
+      {/* CO₂ hero */}
+      <div style={{margin:"0 20px 14px",
+        background:`linear-gradient(135deg,${t.greenSoft},${t.primarySoft})`,
+        border:`2px solid ${t.green}44`,borderRadius:20,padding:"24px 28px",textAlign:"center"}}>
+        <div style={{color:t.green,fontSize:52,fontWeight:800,lineHeight:1}}>{co2.toFixed(2)}</div>
+        <div style={{color:t.textSub,fontSize:14,marginTop:4}}>kg CO₂ saved · {period.toLowerCase()}</div>
+        <div style={{color:t.textMuted,fontSize:11,marginTop:6}}>⚠️ Estimated, not third-party verified</div>
+      </div>
+
+      {/* Credibility bar */}
+      {co2>0&&(
+        <div style={{margin:"0 20px 12px",background:t.card,borderRadius:16,
+          padding:16,border:`1px solid ${t.cardBorder}`}}>
+          <div style={{color:t.textMuted,fontSize:11,marginBottom:10,
+            textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>Data credibility</div>
+          <div style={{height:10,background:t.cardAlt,borderRadius:99,overflow:"hidden",marginBottom:8,display:"flex"}}>
+            <div style={{width:`${verPct}%`,background:`linear-gradient(90deg,${t.primary},${t.green})`,transition:"width .8s"}}/>
+            <div style={{flex:1,background:t.cardBorder}}/>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between"}}>
+            <div style={{display:"flex",alignItems:"center",gap:5}}>
+              <div style={{width:8,height:8,borderRadius:"50%",background:t.primary}}/>
+              <span style={{color:t.primary,fontSize:11}}>{verified.toFixed(2)} kg verified ({verPct}%)</span>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:5}}>
+              <div style={{width:8,height:8,borderRadius:"50%",background:t.cardBorder}}/>
+              <span style={{color:t.textSub,fontSize:11}}>{manual.toFixed(2)} kg manual</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* km + credits row */}
+      <div style={{display:"flex",gap:10,padding:"0 20px 12px"}}>
+        <div style={{flex:1,background:t.card,borderRadius:16,padding:"14px",
+          border:`1px solid ${t.cardBorder}`,textAlign:"center"}}>
+          <div style={{color:t.primary,fontSize:30,fontWeight:800}}>{totalKm.toFixed(1)}</div>
+          <div style={{color:t.textSub,fontSize:12,marginTop:2}}>km logged</div>
+        </div>
+        <div style={{flex:1,background:t.card,borderRadius:16,padding:"14px",
+          border:`1px solid ${t.cardBorder}`,textAlign:"center"}}>
+          <div style={{color:t.green,fontSize:30,fontWeight:800}}>{credits}</div>
+          <div style={{color:t.textSub,fontSize:12,marginTop:2}}>🌿 green credits</div>
+        </div>
+      </div>
+
+      {/* Equivalents */}
+      <div style={{padding:"0 20px 20px"}}>
+        <div style={{color:t.textMuted,fontSize:11,marginBottom:10,
+          textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>That's like…</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {EQUIV.map(e=>(
+            <div key={e.label} style={{background:t.card,borderRadius:14,padding:"13px 16px",
+              display:"flex",alignItems:"center",gap:14,border:`1px solid ${t.cardBorder}`}}>
+              <div style={{fontSize:26}}>{e.icon}</div>
+              <div>
+                <div style={{color:t.text,fontWeight:700,fontSize:17}}>{(co2/e.per).toFixed(1)}</div>
+                <div style={{color:t.textSub,fontSize:12}}>{e.label}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── LEADERBOARD ──────────────────────────────────────────────────────────────
+function LeaderboardScreen({user,t}) {
+  const myVer=user.allTimeCo2>0?Math.round(((user.verifiedCo2||0)/user.allTimeCo2)*100):0;
+  const board=[...LEADERBOARD];
+  const me={name:"You",credits:user.credits||0,streak:user.streak||0,avatar:"😊",isMe:true,verifiedPct:myVer};
+  const idx=board.findIndex(u=>u.credits<=user.credits);
+  if(idx>=0)board.splice(idx,0,me);else board.push(me);
+  return(
+    <div style={{...mkScreen(),background:t.shell,overflowY:"auto",paddingBottom:88}}>
+      <div style={{padding:"22px 20px 0"}}>
+        <div style={{color:t.textMuted,fontSize:11,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>ActSapien</div>
+        <div style={{color:t.text,fontWeight:800,fontSize:22,marginTop:4}}>Leaderboard</div>
+        <div style={{color:t.textSub,fontSize:13,marginTop:4}}>This week's eco heroes</div>
+      </div>
+      <div style={{margin:"12px 20px 4px",display:"flex",gap:8,alignItems:"center"}}>
+        <VerifiedBadge t={t}/><span style={{color:t.textMuted,fontSize:11}}>= 70%+ app-verified logs</span>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:8,padding:20}}>
+        {board.slice(0,6).map((u,i)=>(
+          <div key={i} style={{background:u.isMe?t.greenSoft:t.card,
+            border:`2px solid ${u.isMe?t.green+"66":i===0?t.coral+"55":t.cardBorder}`,
+            borderRadius:14,padding:"13px 16px",display:"flex",alignItems:"center",gap:12}}>
+            <div style={{width:26,textAlign:"center",fontWeight:800,fontSize:15,
+              color:i===0?t.coral:i===1?t.textSub:i===2?t.coral+"99":t.textMuted}}>
+              {i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`}
+            </div>
+            <div style={{fontSize:26}}>{u.avatar}</div>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                <span style={{color:t.text,fontWeight:700,fontSize:14}}>{u.name}{u.isMe&&" (you)"}</span>
+                {u.verifiedPct>=70&&<VerifiedBadge t={t}/>}
+              </div>
+              <div style={{display:"flex",gap:8,marginTop:3}}>
+                <span style={{color:t.textSub,fontSize:11}}>🔥 {u.streak} streak</span>
+                <span style={{color:t.textMuted,fontSize:10}}>· {u.verifiedPct}% verified</span>
+              </div>
+            </div>
+            <div style={{color:t.green,fontWeight:800,fontSize:15}}>{u.credits} 🌿</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── ROOT ─────────────────────────────────────────────────────────────────────
+const TABS=[
+  {id:"home",       icon:"🏠",label:"Home"},
+  {id:"challenges", icon:"⚡",label:"Challenges"},
+  {id:"impact",     icon:"🌊",label:"Impact"},
+  {id:"leaders",    icon:"🏆",label:"Leaderboard"},
+];
+
+function App() {
+  const dark=useDark();
+  const t=dark?DARK:LIGHT;
+  const [user,setUser]               = useStorage("act_user",null);
+  const [connectedApps,setConnected] = useStorage("act_apps",[]);
+  const [tab,setTab]                 = useState("home");
+  const [toast,setToast]             = useState(null);
+  const [confetti,setConfetti]       = useState(false);
+  const [showFitness,setShowFitness] = useState(false);
+
+  useEffect(()=>{
+    if(!user) return;
+    if(user.lastDay!==today()){
+      const wasYest=user.lastDay===new Date(Date.now()-86400000).toDateString();
+      setUser({...user,todayLogs:[],lastDay:today(),
+        streak:wasYest?(user.streak||0)+1:(user.lastDay?0:user.streak||0)});
+    }
+  },[]);
+
+  const handleLogin=name=>setUser({
+    name,credits:0,co2:0,allTimeCo2:0,verifiedCo2:0,totalKm:0,
+    streak:0,todayLogs:[],lastDay:today(),co2Goal:1.0,
+  });
+
+  const handleConnect    =id=>setConnected(p=>[...p.filter(x=>x!==id),id]);
+  const handleDisconnect =id=>setConnected(p=>p.filter(x=>x!==id));
+
+  const handleLog=(action,calc,meta)=>{
+    const {co2,credits}=calc;
+    const km=meta?.km||0;
+    const kwh=meta?.kwh||0;
+    const verified=meta?.verified||false;
+    const log={id:action.id,ts:Date.now(),co2,credits,km,kwh,
+      subtype:meta?.subtype||null,passengers:meta?.passengers||null,
+      verified,ngo:meta?.ngo||null,ngoName:meta?.ngoName||null};
+    setUser({
+      ...user,
+      todayLogs:[...(user.todayLogs||[]),log],
+      credits:    user.credits+credits,
+      co2:        (user.co2||0)+co2,
+      allTimeCo2: (user.allTimeCo2||0)+co2,
+      verifiedCo2:(user.verifiedCo2||0)+(verified?co2:0),
+      totalKm:    (user.totalKm||0)+km,
+    });
+    const distStr=km>0?` · ${km>=1?km.toFixed(1)+"km":Math.round(km*1000)+"m"}`:""
+    const ngoStr=meta?.ngoName?` → ${meta.ngoName}`:"";
+    setToast(`+${credits} credits${distStr}${ngoStr}${verified?" ✦":""}`);
+    setConfetti(true);setTimeout(()=>setConfetti(false),1400);
+  };
+
+  if(!user) return(
+    <><style>{CSS}</style>
+      <div style={mkShell(t)}><LoginScreen t={t} onLogin={handleLogin}/></div>
+    </>
+  );
+
+  return(
+    <><style>{CSS}</style>
+      <div style={mkShell(t)}>
+        <div style={{flex:1,overflow:"hidden",position:"relative"}}>
+          {tab==="home"       &&<HomeScreen user={user} setUser={setUser} t={t} connectedApps={connectedApps}
+            onLog={handleLog} onOpenFitness={()=>setShowFitness(true)}/>}
+          {tab==="challenges" &&<ChallengesScreen t={t}/>}
+          {tab==="impact"     &&<ImpactScreen user={user} t={t}/>}
+          {tab==="leaders"    &&<LeaderboardScreen user={user} t={t}/>}
+        </div>
+        <div style={{display:"flex",borderTop:`1px solid ${t.navBorder}`,background:t.nav}}>
+          {TABS.map(tb=>(
+            <button key={tb.id} onClick={()=>setTab(tb.id)}
+              style={{flex:1,background:"none",border:"none",padding:"10px 0",cursor:"pointer",
+                display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+              <div style={{fontSize:20,opacity:tab===tb.id?1:0.35,
+                transform:tab===tb.id?"scale(1.18)":"scale(1)",transition:"all .2s"}}>{tb.icon}</div>
+              <div style={{fontSize:10,fontWeight:tab===tb.id?700:500,
+                color:tab===tb.id?t.green:t.textMuted}}>{tb.label}</div>
+            </button>
+          ))}
+        </div>
+        {toast      &&<Toast msg={toast} t={t} onDone={()=>setToast(null)}/>}
+        {confetti   &&<Confetti/>}
+        {showFitness&&<FitnessConnectModal t={t} connectedApps={connectedApps}
+          onConnect={handleConnect} onDisconnect={handleDisconnect}
+          onClose={()=>setShowFitness(false)}/>}
+      </div>
+    </>
+  );
+}
+
+const CSS=`
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box;}
+  input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;}
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;}
+  @keyframes bounce      {from{transform:translateY(0)}to{transform:translateY(-12px)}}
+  @keyframes spin        {from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+  @keyframes toastIn     {from{opacity:0;transform:translateX(-50%) translateY(20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+  @keyframes confettiFall{to{transform:translateY(110vh) rotate(720deg);opacity:0}}
+  @keyframes slideUp     {from{transform:translateY(100%)}to{transform:translateY(0)}}
+`;
+
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(App));
+  </script>
+</body>
+</html>
